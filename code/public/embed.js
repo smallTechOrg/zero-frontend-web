@@ -76,8 +76,8 @@
   const bubbleText = document.createElement("div");
   bubbleText.innerHTML = customTagline;
   bubbleText.style.position = "fixed";
-  bubbleText.style.bottom = "60px";
-  bubbleText.style.right = "140px";
+  bubbleText.style.bottom = "32px";
+  bubbleText.style.right = "88px";
   bubbleText.style.background = lightTint(customColour, 0.85);
   bubbleText.style.padding = "8px 12px";
   bubbleText.style.borderRadius = "12px";
@@ -88,13 +88,48 @@
   bubbleText.style.fontWeight = "600";
   // Ensure readable contrast: dark colour on light tint, or dark fallback on light colour tint
   bubbleText.style.color = isLightColor(customColour) ? '#1a1a1a' : customColour;
+  bubbleText.style.display = "flex";
+  bubbleText.style.alignItems = "center";
+  bubbleText.style.gap = "6px";
+  bubbleText.style.maxWidth = "calc(100vw - 120px)";
+
+  // Dismissal is remembered, so the tagline does not come back on the next
+  // close, the next auto-open, or the next page view.
+  var DISMISS_KEY = "zer0-tagline-dismissed";
+  function taglineDismissed() {
+    try { return window.localStorage.getItem(DISMISS_KEY) === "1"; } catch (e) { return false; }
+  }
+  function dismissTagline() {
+    try { window.localStorage.setItem(DISMISS_KEY, "1"); } catch (e) {}
+    bubbleText.style.display = "none";
+  }
+  function showTagline() {
+    if (taglineDismissed()) return;
+    bubbleText.style.display = "flex";
+  }
+
+  // The close button carries data-tagline-close: host pages that inject their
+  // own dismiss control look for exactly this attribute and skip when present,
+  // so no duplicate button appears.
+  var taglineClose = document.createElement("button");
+  taglineClose.setAttribute("data-tagline-close", "true");
+  taglineClose.setAttribute("aria-label", "Dismiss");
+  taglineClose.innerHTML = "&times;";
+  taglineClose.style.cssText =
+    "background:none;border:none;cursor:pointer;font-size:16px;line-height:1;" +
+    "padding:0 2px;opacity:0.65;color:inherit;flex:none;";
+  taglineClose.addEventListener("click", function (e) {
+    e.stopPropagation();
+    dismissTagline();
+  });
+  bubbleText.appendChild(taglineClose);
 
   // Floating chat bubble
   const bubble = document.createElement("div");
   bubble.innerHTML = "💬";
   bubble.style.position = "fixed";
-  bubble.style.bottom = "50px";
-  bubble.style.right = "70px";
+  bubble.style.bottom = "20px";
+  bubble.style.right = "20px";
   bubble.style.marginLeft = "auto";
   bubble.style.width = "60px";
   bubble.style.height = "60px";
@@ -108,6 +143,56 @@
   bubble.style.fontSize = "28px";
   bubble.style.boxShadow = "0 4px 12px rgba(0,0,0,0.15)";
   bubble.style.zIndex = "999998";
+
+  // ------------------------------------------------------------ responsive
+  // Sizes are applied imperatively because the widget is injected with inline
+  // styles and has no stylesheet of its own.
+  function applyResponsive() {
+    var small = window.matchMedia("(max-width: 640px)").matches;
+
+    if (small) {
+      bubble.style.width = "48px";
+      bubble.style.height = "48px";
+      bubble.style.fontSize = "22px";
+      bubble.style.bottom = "16px";
+      bubble.style.right = "16px";
+
+      bubbleText.style.fontSize = "13px";
+      bubbleText.style.padding = "6px 9px";
+      bubbleText.style.bottom = "26px";
+      bubbleText.style.right = "72px";
+      bubbleText.style.maxWidth = "calc(100vw - 96px)";
+      bubbleText.style.whiteSpace = "nowrap";
+      bubbleText.style.overflow = "hidden";
+      bubbleText.style.textOverflow = "ellipsis";
+
+      iframeWrapper.style.width = "calc(100vw - 24px)";
+      iframeWrapper.style.height = "min(72vh, 520px)";
+      iframeWrapper.style.right = "12px";
+      iframeWrapper.style.bottom = "12px";
+    } else {
+      bubble.style.width = "60px";
+      bubble.style.height = "60px";
+      bubble.style.fontSize = "28px";
+      bubble.style.bottom = "20px";
+      bubble.style.right = "20px";
+
+      bubbleText.style.fontSize = "16px";
+      bubbleText.style.padding = "8px 12px";
+      bubbleText.style.bottom = "32px";
+      bubbleText.style.right = "88px";
+      bubbleText.style.maxWidth = "calc(100vw - 120px)";
+      bubbleText.style.whiteSpace = "normal";
+
+      iframeWrapper.style.width = "350px";
+      iframeWrapper.style.height = "520px";
+      iframeWrapper.style.right = "20px";
+      iframeWrapper.style.bottom = "20px";
+    }
+  }
+
+  applyResponsive();
+  window.addEventListener("resize", applyResponsive);
 
   if (displayMobile === false) {
     // Hide on mobile
@@ -136,7 +221,7 @@
         iframeWrapper.style.opacity = "0";
         iframeWrapper.style.transform = "translateY(20px) scale(0.97)";
         setTimeout(function () { iframeWrapper.style.display = "none"; }, 350);
-        bubbleText.style.display = "block";
+        showTagline();
         chatIsOpen = false;
       }
     }
@@ -177,13 +262,15 @@
 
   // Auto-open the chat after 10 seconds on the page
   setTimeout(function () {
-    if (!chatIsOpen) openChat();
+    if (!chatIsOpen && !taglineDismissed()) openChat();
   }, 10000);
 
   function addChatElements() {
     document.body.appendChild(iframeWrapper);
     document.body.appendChild(bubble);
     document.body.appendChild(bubbleText);
+    // Honour a dismissal from a previous visit on first paint.
+    if (taglineDismissed()) bubbleText.style.display = "none";
   }
 
   if (document.readyState === "loading") {
