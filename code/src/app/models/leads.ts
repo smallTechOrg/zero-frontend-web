@@ -8,6 +8,7 @@ export interface LeadRowData {
   country: string;
   status: LeadStatus;
   remarks?: string;
+  summary?: string;
   is_active: boolean;
   domain: string;
   time: string;
