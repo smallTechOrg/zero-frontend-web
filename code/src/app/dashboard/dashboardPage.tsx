@@ -100,6 +100,7 @@ export default function DashboardPage({ initialRows, domainFilter }: DashboardPa
   const [sorting, setSorting] = useState<SortingState>([]);
   const [copiedLink, setCopiedLink] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [editingRemarks, setEditingRemarks] = useState<string | null>(null);
 
   /* ── Filtered rows ── */
   const filteredRows = useMemo(() => {
@@ -267,19 +268,9 @@ export default function DashboardPage({ initialRows, domainFilter }: DashboardPa
       },
     },
     {
-      header: 'Remarks',
-      id: 'remarks',
-      cell: ({ row }) => {
-        const r = row.original;
-        return (
-          <RowRemarks
-            sessionId={r.session_id}
-            initialRemarks={r.remarks ?? ''}
-            saving={!!saving[r.session_id]}
-            onSave={onSaveRemarks}
-          />
-        );
-      },
+      header: 'Summary',
+      id: 'summary',
+      cell: ({ row }) => <RowSummary summary={row.original.summary ?? ''} />,
     },
     {
       header: 'Actions',
@@ -311,6 +302,11 @@ export default function DashboardPage({ initialRows, domainFilter }: DashboardPa
               <ChatIcon />
               {isOpen ? 'Hide' : 'History'}
             </button>
+            <RemarksButton
+              remarks={r.remarks ?? ''}
+              active={editingRemarks === r.session_id}
+              onClick={() => setEditingRemarks(id => (id === r.session_id ? null : r.session_id))}
+            />
             {isConfirmingDelete ? (
               <div className="inline-flex items-center gap-1 bg-amber/10 border border-amber/30 rounded-lg px-2 py-1">
                 <span className="text-xs text-amber whitespace-nowrap">Delete?</span>
@@ -343,7 +339,7 @@ export default function DashboardPage({ initialRows, domainFilter }: DashboardPa
         );
       },
     },
-  ], [expanded, histories, historyLoading, onChangeStatus, onSaveRemarks, onToggleActive, setExpanded, loadHistory, saving, domainFilter, deleteConfirm]);
+  ], [expanded, histories, historyLoading, onChangeStatus, onToggleActive, setExpanded, loadHistory, domainFilter, deleteConfirm, editingRemarks]);
 
   const table = useReactTable({
     data: filteredRows,
@@ -485,6 +481,19 @@ export default function DashboardPage({ initialRows, domainFilter }: DashboardPa
                         </td>
                       ))}
                     </tr>
+                    {editingRemarks === original.session_id && (
+                      <tr>
+                        <td colSpan={row.getVisibleCells().length} className="px-4 py-0">
+                          <RemarksEditor
+                            sessionId={original.session_id}
+                            initialRemarks={original.remarks ?? ''}
+                            saving={!!saving[original.session_id]}
+                            onSave={onSaveRemarks}
+                            onClose={() => setEditingRemarks(null)}
+                          />
+                        </td>
+                      </tr>
+                    )}
                     {isOpen && (
                       <tr>
                         <td colSpan={row.getVisibleCells().length} className="px-4 py-0">
@@ -568,6 +577,11 @@ export default function DashboardPage({ initialRows, domainFilter }: DashboardPa
                     <ChatIcon />
                     {isOpen ? 'Hide' : 'History'}
                   </button>
+                  <RemarksButton
+                    remarks={r.remarks ?? ''}
+                    active={editingRemarks === r.session_id}
+                    onClick={() => setEditingRemarks(id => (id === r.session_id ? null : r.session_id))}
+                  />
                   {deleteConfirm === r.session_id ? (
                     <div className="inline-flex items-center gap-1 bg-amber/10 border border-amber/30 rounded-lg px-2 py-1">
                       <span className="text-xs text-amber">Delete?</span>
@@ -598,13 +612,19 @@ export default function DashboardPage({ initialRows, domainFilter }: DashboardPa
                   )}
                 </div>
 
-                {/* Remarks */}
-                <RowRemarks
-                  sessionId={r.session_id}
-                  initialRemarks={r.remarks ?? ''}
-                  saving={!!saving[r.session_id]}
-                  onSave={onSaveRemarks}
-                />
+                {/* Summary */}
+                <RowSummary summary={r.summary ?? ''} />
+
+                {/* Remarks editor */}
+                {editingRemarks === r.session_id && (
+                  <RemarksEditor
+                    sessionId={r.session_id}
+                    initialRemarks={r.remarks ?? ''}
+                    saving={!!saving[r.session_id]}
+                    onSave={onSaveRemarks}
+                    onClose={() => setEditingRemarks(null)}
+                  />
+                )}
 
                 {/* Expanded chat history */}
                 {isOpen && (
@@ -758,48 +778,75 @@ function ChatHistoryPanel({ sessionId, loading, error, messages }: {
   );
 }
 
-function RowRemarks({ sessionId, initialRemarks, saving, onSave }: {
+function RowSummary({ summary }: { summary: string }) {
+  return (
+    <div className="text-sm text-white/60 line-clamp-3 max-w-xs" title={summary || 'No summary yet'}>
+      {summary || <span className="italic text-white/30">No summary yet</span>}
+    </div>
+  );
+}
+
+/* Pencil in the Actions column; highlighted when the lead already has remarks */
+function RemarksButton({ remarks, active, onClick }: {
+  remarks: string; active: boolean; onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      title={remarks ? `Remarks: ${remarks}` : 'Add remarks'}
+      className={`p-1.5 rounded-md transition-colors ${
+        active
+          ? 'bg-pacific text-white'
+          : remarks
+            ? 'text-pacific hover:bg-pacific/10'
+            : 'text-white/30 hover:text-white/60 hover:bg-white/10'
+      }`}
+      onClick={onClick}
+    >
+      <EditIcon />
+    </button>
+  );
+}
+
+function RemarksEditor({ sessionId, initialRemarks, saving, onSave, onClose }: {
   sessionId: string; initialRemarks: string; saving: boolean;
   onSave: (session_id: string, remarks: string) => Promise<void>;
+  onClose: () => void;
 }) {
   const [value, setValue] = useState(initialRemarks);
-  const [isEditing, setIsEditing] = useState(false);
   useEffect(() => setValue(initialRemarks), [initialRemarks]);
 
   return (
-    <div className="flex items-start gap-2 min-w-[160px]">
-      {isEditing ? (
-        <textarea
-          className="w-full px-2.5 py-1.5 rounded-md bg-white/10 border border-white/20 text-sm text-white placeholder-white/30 focus:outline-none focus:ring-1 focus:ring-pacific/50 resize-none"
-          value={value}
-          onChange={e => setValue(e.target.value)}
-          placeholder="Add remarks…"
-          rows={2}
-        />
-      ) : (
-        <div className="text-sm text-white/60 truncate max-w-[180px]" title={value || 'No remarks'}>
-          {value || <span className="italic text-white/30">No remarks</span>}
-        </div>
-      )}
-      {isEditing ? (
+    <div className="rounded-lg border border-white/5 bg-white/[0.02] p-4 my-2 space-y-2">
+      <div className="flex items-center gap-2 text-xs text-white/40">
+        <EditIcon />
+        <span>Remarks</span>
+      </div>
+      <textarea
+        className="w-full px-2.5 py-1.5 rounded-md bg-white/10 border border-white/20 text-sm text-white placeholder-white/30 focus:outline-none focus:ring-1 focus:ring-pacific/50 resize-none"
+        value={value}
+        onChange={e => setValue(e.target.value)}
+        placeholder="Add remarks…"
+        rows={3}
+        autoFocus
+      />
+      <div className="flex items-center justify-end gap-2">
+        <button
+          type="button"
+          className="px-2.5 py-1 rounded-md text-xs font-medium text-white/60 hover:text-white hover:bg-white/10 transition-colors"
+          onClick={onClose}
+        >
+          Cancel
+        </button>
         <button
           type="button"
           className="px-2.5 py-1 rounded-md bg-pacific text-white text-xs font-medium hover:bg-pacific/80 disabled:opacity-50 transition-colors whitespace-nowrap"
-          onClick={async () => { await onSave(sessionId, value); setIsEditing(false); }}
+          onClick={async () => { await onSave(sessionId, value); onClose(); }}
           disabled={saving}
         >
           {saving ? '…' : 'Save'}
         </button>
-      ) : (
-        <button
-          type="button"
-          title="Edit remarks"
-          className="p-1 rounded-md text-white/30 hover:text-white/60 hover:bg-white/10 transition-colors flex-shrink-0"
-          onClick={() => setIsEditing(true)}
-        >
-          <EditIcon />
-        </button>
-      )}
+      </div>
     </div>
   );
 }
